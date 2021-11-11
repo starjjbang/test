@@ -1,5 +1,145 @@
-step01 01.sequencing_QC ###################################################
+다온에서 총판
+best paper : https://www.embopress.org/doi/full/10.15252/msb.20188746
+Current best practices in single-cell RNA-seq analysis: a tutorial --> 꼭 읽어보기
+
+
+
+step01 01.cell_ranger ###################################################
+cellranger count --id=pbmc_v38_1000 \
+                   --transcriptome=./refdata-gex-GRCh38-2020-A_chr22/ \
+                   --fastqs=./fastq/ \
+                   --sample=HCC
+
 #########################################################################################################################################################
 
-step01 01.sequencing_QC ###################################################
+step02 seurat ###################################################
+library(dplyr)
+library(Seurat)
+
+# Load the PBMC dataset
+pbmc.data <- Read10X(data.dir = "./filtered_feature_bc_matrix/")
+# Initialize the Seurat object with the raw (non-normalized data).
+pbmc <- CreateSeuratObject(counts = pbmc.data, project = "pbmc", min.cells = 3, min.feat
+ures = 200)
+pbmc
+
+pbmc[["percent.mt"]] <- PercentageFeatureSet(object = pbmc, pattern = "^MT-")
+
+pdf('plot01_before_process.pdf')
+VlnPlot(object = pbmc, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol =
+3)
+dev.off()
+
+pbmc <- subset(x = pbmc, subset = nFeature_RNA > 200 & percent.mt < 50)
+
+pdf('plot01_after_process.pdf')
+VlnPlot(object = pbmc, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol =
+3)
+dev.off()
+
+pbmc <- NormalizeData(object = pbmc, normalization.method = "LogNormalize", scale.factor
+ = 10000)
+#pbmc <- NormalizeData(object = pbmc)
+
+pbmc <- FindVariableFeatures(object = pbmc, selection.method = "vst", nfeatures = 2000)
+
+# Identify the 10 most highly variable genes
+top10 <- head(x = VariableFeatures(object = pbmc), 10)
+
+# plot variable features with and without labels
+pdf("plot02_highly_variable.pdf")
+plot1 <- VariableFeaturePlot(object = pbmc)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+CombinePlots(plots = list(plot1, plot2))
+dev.off()
+
+all.genes <- rownames(x = pbmc)
+pbmc <- ScaleData(object = pbmc, features = all.genes)
+
+pbmc <- RunPCA(object = pbmc, features = VariableFeatures(object = pbmc))
+
+pdf('plot03_elbowplot.pdf')
+ElbowPlot(object = pbmc)
+dev.off()
+
+
+pbmc <- FindNeighbors(object = pbmc, dims = 1:15)
+pbmc <- FindClusters(object = pbmc, resolution = 0.5)
+pbmc <- RunUMAP(object = pbmc, dims = 1:15)
+
+# note that you can set `label = TRUE` or use the LabelClusters function to help label
+# individual clusters
+pdf('plot04_umap.pdf')
+DimPlot(object = pbmc, reduction = "umap")
+dev.off()
+
+#########################################################################################################################################################
+
+
+
+step03 slingshot.R ###################################################
+pbmc <- readRDS("./scRNAseq.RDS")
+
+library(slingshot)
+library(Seurat)
+library(scales)
+library(viridis)
+library(Matrix)
+
+system("mkdir slingshot")
+seu <- pbmc
+
+sds <- slingshot(Embeddings(pbmc, "umap"), clusterLabels = pbmc$seurat_clusters,
+                 start.clus = 2, stretch = 0)
+
+cell_pal <- function(cell_vars, pal_fun,...) {
+  if (is.numeric(cell_vars)) {
+    pal <- pal_fun(100, ...)
+    return(pal[cut(cell_vars, breaks = 100)])
+  } else {
+    categories <- sort(unique(cell_vars))
+    pal <- setNames(pal_fun(length(categories), ...), categories)
+    return(pal[cell_vars])
+  }
+}
+
+cell_colors <- cell_pal(seu$stim, brewer_pal("qual", "Set2"))
+cell_colors_clust <- cell_pal(seu$seurat_clusters, hue_pal())
+
+
+pdf("./slingshot/plot01_cellcolors.pdf")
+plot(reducedDim(sds), col = cell_colors, pch = 16, cex = 0.5)
+lines(sds, lwd = 2, type = 'lineages', col = 'black')
+dev.off()
+
+
+pdf("./slingshot/plot02_cell_clusters.pdf")
+plot(reducedDim(sds), col = cell_colors_clust, pch = 16, cex = 0.5)
+lines(sds, lwd = 2, type = 'lineages', col = 'black')
+dev.off()
+
+
+pdf("./slingshot/plot03_roots.pdf",width=21,height=14)
+nc <- 3
+pt <- slingPseudotime(sds)
+nms <- colnames(pt)
+nr <- ceiling(length(nms)/nc)
+pal <- viridis(100, end = 0.95)
+par(mfrow = c(nr, nc))
+for (i in nms) {
+  colors <- pal[cut(pt[,i], breaks = 100)]
+  plot(reducedDim(sds), col = colors, pch = 16, cex = 0.5, main = i)
+  lines(sds, lwd = 2, col = 'black', type = 'lineages')
+}
+
+dev.off()
+
+
+print(sds@lineages)
+
+
+write.table(pt,'./slingshot/pseudotime.txt',sep='\t',quote=FALSE)
+
+write.table(as.character(sds@lineages),'./slingshot/pseudotime_order.txt',sep='\t',quote
+=FALSE)
 #########################################################################################################################################################
