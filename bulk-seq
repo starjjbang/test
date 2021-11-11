@@ -119,7 +119,7 @@ df2.to_csv("./04_downstream_analysis/expression.txt",sep='\t')
 # enrichment
 multiple array virwer : https://mybiosoftware.com/mev-4-6-2-multiple-experiment-viewer.html
 enrichment test  : https://maayanlab.cloud/Enrichr/
-
+GSEA
 
 
 
