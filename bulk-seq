@@ -1,0 +1,45 @@
+step 01 reference genome index
+input : https://support.illumina.com/sequencing/sequencing_software/igenome.html
+
+STAR    --runMode genomeGenerate \
+        --runThreadN 2 \
+        --genomeDir ./00_reference_genome/hg38_star_index  \
+        --genomeFastaFiles ./00_reference_genome/genome.fa \
+        --sjdbGTFfile ./00_reference_genome/genes.gtf      \
+        --sjdbOverhang 100
+
+
+################### FASTA from igenome ################################################################
+>chr1
+NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
+NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
+
+#######################################################################################################
+
+
+################### gtf from igenome ################################################################
+chr1    unknown exon    11874   12227   .       +       .       gene_id "DDX11L1"; gene_name "DDX11L1";
+ transcript_id "NR_046018"; tss_id "TSS18303";
+#######################################################################################################
+
+
+step02 mapping job
+
+STAR    --genomeDir ./00_reference_genome/hg38_star_index   \
+        --runThreadN 2  \
+        --readFilesIn ./01_fastq/H3122LR_CDA_KD1_1.fastq.gz ./01_fastq/H3122LR_CDA_KD1_2.fastq.gz \
+        --readFilesCommand zcat  \
+        --sjdbGTFfile ./00_reference_genome/genes.gtf   \
+        --outSAMtype BAM SortedByCoordinate   \
+        --quantMode GeneCounts    \
+        --outFileNamePrefix ./02_STAR_output/H3122LR_CDA_KD1
+        
+        
+################### FASTQ ###############################################################################
++
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFFFFF::F,FFFFFFFFFFFFFFFFFFFFFFF:FFFF
+@A00125:455:HT5WWDSXY:3:1101:1805:1172 1:N:0:CGTCTGCG+ATTGTGAA
+CTCCTGGATGCACAAAAGACCCTGAAGGGCTTTTTTGATCAGCAAAACAAAAACAGAAAAGCAAAAAACAGTTAATTTTTGTTTGGTCAAGTTTACTCAAC
+
+#######################################################################################################
+
