@@ -99,6 +99,29 @@ write.table(file = './edgeR_DEG_expression.txt',normalized_cpm_log2[rownames(out
 l.names=NA,quote=FALSE)
 
 
+STEP04 gsea
+
+import os
+import pandas as pd
+df = pd.read_csv("./03_edgeR/cpm_normalized_log2_result.txt",sep='\t',index_col=0)
+
+heads = list(df.columns)
+heads.insert(0,'DESCRIPTION')
+
+df['DESCRIPTION'] = 'NA'
+
+df2 = df[heads]
+
+df2.index.name = 'Gene_symbol'
+
+df2.to_csv("./04_downstream_analysis/expression.txt",sep='\t')
+
+# enrichment
+multiple array virwer : https://mybiosoftware.com/mev-4-6-2-multiple-experiment-viewer.html
+enrichment test  : https://maayanlab.cloud/Enrichr/
+
+
+
 
 
 
