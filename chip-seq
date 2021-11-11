@@ -1,0 +1,107 @@
+###########################################################
+# 1. check sequencing quality
+##########################################################
+
+fastqc 01.Raw/INPUT_2M.fastq.gz
+fastqc 01.Raw/siGATA3_2M.fastq.gz
+
+###########################################################
+# 2. trimming reads
+##########################################################
+
+trim_galore -q 30 01.Raw/INPUT_2M.fastq.gz -o 02.Trimmed/
+trim_galore -q 30 01.Raw/siGATA3_2M.fastq.gz -o 02.Trimmed/
+
+##########################################################
+# 3. Mapping to Reference Genome
+#########################################################
+
+bwa mem 00.REF/hg19_chr9 02.Trimmed/INPUT_2M_trimmed.fq.gz > 03.Mapping/INPUT.sam
+bwa mem 00.REF/hg19_chr9 02.Trimmed/siGATA3_2M_trimmed.fq.gz > 03.Mapping/siGATA3.sam
+
+################################################################
+#INPUT sample processing#
+################################################################
+
+# Sam to bam
+echo "Sam to bam processing..."
+samtools view -S -b -h -@ 2 03.Mapping/INPUT.sam > 03.Mapping/INPUT.bam
+samtools view -S -b -h -@ 2 03.Mapping/siGATA3.sam > 03.Mapping/siGATA3.bam
+
+# Sort bam file
+echo "Sort bam file processing..."
+samtools sort -@ 2 -o 03.Mapping/INPUT.sorted.bam 03.Mapping/INPUT.bam
+samtools sort -@ 2 -o 03.Mapping/siGATA3.sorted.bam 03.Mapping/siGATA3.bam
+
+# Deduplciation
+echo "Deduplication processing..."
+java -jar /data/tools/picard/picard.jar MarkDuplicates I=03.Mapping/INPUT.sorted.bam O=03.Mapping/INPUT.sorted.dedup.bam M=03.Mapping/INPUT_marked_dup_metrics.txt
+
+java -jar /data/tools/picard/picard.jar MarkDuplicates I=03.Mapping/siGATA3.sorted.bam O=03.Mapping/siGATA3.sorted.dedup.bam M=03.Mapping/siGATA3_marked_dup_metrics.txt
+
+# Bam file index
+echo "Bam file index processing..."
+samtools index -b -@ 2 03.Mapping/INPUT.sorted.dedup.bam 03.Mapping/INPUT.sorted.dedup.bam.bai
+samtools index -b -@ 2 03.Mapping/siGATA3.sorted.dedup.bam 03.Mapping/siGATA3.sorted.dedup.bam.bai
+
+
+#######################################################################
+# ChIP quality check : deeptools
+#######################################################################
+
+#bamFingerprint -b 03.Mapping/siGATA3.sorted.dedup.bam 03.Mapping/INPUT.sorted.dedup.bam -plot ./result.svg -bs 200 -p 2
+
+#######################################################################
+# ChIP quality check : Strand Cross-Correlation (SCC)
+#######################################################################
+
+Rscript run_spp.R -c=03.Mapping/siGATA3.sorted.dedup.bam -i=03.Mapping/INPUT.sorted.dedup.bam
+
+###########################################################################
+# 6. Peak calling : MACS2
+###########################################################################
+
+macs2 callpeak -t 03.Mapping/siGATA3.sorted.dedup.bam -c 03.Mapping/INPUT.sorted.dedup.bam -g hs -B -n 04.MACS2/test -q 0.01 --nomodel
+
+#######################################################################
+# ChIP quality check : Fraction of Reads in Peaks (FRiP)
+#######################################################################
+
+bamToBed -i 03.Mapping/siGATA3.sorted.dedup.bam > siGATA.bed
+intersectBed -a 04.MACS2/test_summits.bed -b siGATA.bed > intersect.bed
+perl getCnt.pl intersect.bed
+
+###############################################################
+# Visualization
+###############################################################
+
+bamCoverage -b 03.Mapping/INPUT.sorted.dedup.bam -bs 25 -o INPUT.bw --effectiveGenomeSize 112970000
+bamCoverage -b 03.Mapping/siGATA3.sorted.dedup.bam -bs 25 -o siGATA3.bw --effectiveGenomeSize 112970000
+
+########################################################
+# HOMER annotation : makeTageDirectory
+########################################################
+
+makeTagDirectory 05.HOMER/INPUT 03.Mapping/INPUT.sorted.dedup.bam
+makeTagDirectory 05.HOMER/siGATA3 03.Mapping/siGATA3.sorted.dedup.bam
+
+########################################################
+# HOMER annotation : peak calling
+########################################################
+
+findPeaks 05.HOMER/siGATA3/ -style factor -tbp 3 -o auto -i 05.HOMER/INPUT/
+
+########################################################
+# HOMER annotation : peak annotation
+########################################################
+
+annotatePeaks.pl 05.HOMER/siGATA3/peaks.txt hg19 > 06.Annotation/Annot_homer.txt
+
+#####################################################
+# MOTIF analysis
+####################################################
+
+#findMotifsGenome.pl 05.HOMER/siGATA3/peaks.txt hg19 07.MOTIF
+
+
+
