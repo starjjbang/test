@@ -2,13 +2,18 @@
 best paper : https://www.embopress.org/doi/full/10.15252/msb.20188746
 Current best practices in single-cell RNA-seq analysis: a tutorial --> 꼭 읽어보기
 
+여러 cell을 합칠때 Seurat 를 사용해서 마지막에 합치는 것이 
+cell ranger 에서 하는것 보다 결과가 좋았음
+방법  : https://satijalab.org/seurat/articles/integration_rpca.html --> 제일 많이 씀
+https://satijalab.org/seurat/articles/integration_introduction.html 다른 방법
+
 
 
 step01 01.cell_ranger ###################################################
-cellranger count --id=pbmc_v38_1000 \
-                   --transcriptome=./refdata-gex-GRCh38-2020-A_chr22/ \
-                   --fastqs=./fastq/ \
-                   --sample=HCC
+  count --id=pbmc_v38_1000 \ # 저장할경로
+                   --transcriptome=./refdata-gex-GRCh38-2020-A_chr22/ \ #REFERENCE 파일 10X 에서 받음 됨
+                   --fastqs=./fastq/ \ fastq 파일 경로
+                   --sample=HCC # file name
 
 #########################################################################################################################################################
 
