@@ -1,0 +1,92 @@
+
+step01 01.sequencing_QC ###################################################
+
+if [[ ! -e 01.sequencing_QC ]]; then
+            mkdir 01.sequencing_QC
+fi
+
+fastqc rawdata/T-1-T_tissue_1.fastq rawdata/T-1-T_tissue_2.fastq -o 01.sequencing_QC 1>01.sequencing_QC/01.01.sequencing_QC.err 2>01.sequencing_QC/01.01.sequencing_QC.log
+#########################################################################################################################################################
+
+step01 02.trimming ###################################################
+if [[ ! -e 02.trimming ]]; then
+            mkdir 02.trimming
+fi
+
+##################
+# Adapter remove #
+##################
+cutadapt -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC -A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTA -m 50 -o 02.trimming/T-1-T_tissue_1.cutadapt.fastq -p 02.trimming/T-1-T_tissue_2.cutadapt.fastq rawdata/T-1-T_tissue_1.fastq rawdata/T-1-T_tissue_2.fastq 1> 02.trimming/02.01.cutadapt.log 2> 02.trimming/02.01.cutadapt.err
+
+#################################
+# Low quality sequence trimming #
+#################################
+sickle pe -t sanger -q 20 -l 50 -f 02.trimming/T-1-T_tissue_1.cutadapt.fastq -r 02.trimming/T-1-T_tissue_2.cutadapt.fastq -o 02.trimming/T-1-T_tissue_1.cutadapt.trim.fastq -p 02.trimming/T-1-T_tissue_2.cutadapt.trim.fastq -s 02.trimming/T-1-T_tissue_single.cutadapt.trim.fastq 1>02.trimming/02.02.sickle.log 2>02.trimming/02.02.sickle.err
+
+#########################################################################################################################################################
+
+step03.mapping ###################################################
+if [[ ! -e 03.mapping ]]; then
+            mkdir 03.mapping
+fi
+
+###############################
+# Mapping to reference genome #
+###############################
+bwa mem -t 2 -R '@RG\tID:Tumor\tSM:T-1-T_tissue\tPL:Illumina' reference/reference.fasta 02.trimming/T-1-T_tissue_1.cutadapt.trim.fastq 02.trimming/T-1-T_tissue_2.cutadapt.trim.fastq -o 03.mapping/T-1-T_tissue.sam 1>03.mapping/03.01.mapping.err 2>03.mapping/03.01.mapping.log
+
+#######################
+# Sorting by position #
+#######################
+samtools view -u -@ 2 03.mapping/T-1-T_tissue.sam | samtools sort -@ 4 -o 03.mapping/T-1-T_tissue.sort.bam 1>03.mapping/03.02.sorting.err 2>03.mapping/03.02.sorting.log
+
+##########################
+# Remove PCR duplication #
+##########################
+samtools rmdup 03.mapping/T-1-T_tissue.sort.bam 03.mapping/T-1-T_tissue.sort.rmdup.bam 1>03.mapping/03.03.rmdup.err 2>03.mapping/03.03.rmdup.log
+
+##############
+# Make index #
+##############
+samtools index 03.mapping/T-1-T_tissue.sort.rmdup.bam 03.mapping/T-1-T_tissue.sort.rmdup.bai
+
+#########################################################################################################################################################
+
+step04.variant_calling ###################################################
+if [[ ! -e 04.variant_calling ]]; then
+            mkdir 04.variant_calling
+fi
+
+####################################
+# Base Quality Score Recalibration #
+####################################
+gatk BaseRecalibrator -R reference/reference.fasta -I 03.mapping/T-1-T_tissue.sort.rmdup.bam -O 04.variant_calling/T-1-T_tissue.BQSR.table --known-sites reference/dbsnp_138.hg38.vcf 1>>04.variant_calling/04.01.BaseRecalibrator.err 2>>04.variant_calling/04.01.BaseRecalibrator.log
+
+gatk ApplyBQSR -R reference/reference.fasta -I 03.mapping/T-1-T_tissue.sort.rmdup.bam -O 04.variant_calling/T-1-T_tissue.sort.rmdup.ApplyBQSR.bam -bqsr 04.variant_calling/T-1-T_tissue.BQSR.table 1>>04.variant_calling/04.01.BaseRecalibrator.err 2>>04.variant_calling/04.01.BaseRecalibrator.log
+
+gatk PrintReads -R reference/reference.fasta -I 04.variant_calling/T-1-T_tissue.sort.rmdup.ApplyBQSR.bam -O 04.variant_calling/T-1-T_tissue.sort.rmdup.recalib.bam 1>>04.variant_calling/04.01.BaseRecalibrator.err 2>>04.variant_calling/04.01.BaseRecalibrator.log
+
+###################
+# Variant calling #
+###################
+gatk HaplotypeCaller -R reference/reference.fasta -I 04.variant_calling/T-1-T_tissue.sort.rmdup.recalib.bam -O 04.variant_calling/T-1-T_tissue.vcf 1>04.variant_calling/04.02.HaplotypeCaller.err 2>04.variant_calling/04.02.HaplotypeCaller.log
+
+#########################################################################################################################################################
+
+step01 05.annotation ###################################################
+if [[ ! -e 05.annotation ]]; then
+            mkdir 05.annotation
+fi
+
+################################
+# Convert vcf to annovar input #
+################################
+convert2annovar.pl --format vcf4 04.variant_calling/T-1-T_tissue.vcf --outfile 05.annotation/T-1-T_tissue.avinput 1>05.annotation/05.01.convert.err 2>05.annotation/05.01.convert.log
+
+######################
+# Annovar annotation #
+######################
+table_annovar.pl 05.annotation/T-1-T_tissue.avinput reference/hg38_annovar -buildver hg38 -out 05.annotation/T-1-T_tissue.TableAnno -remove -protocol refGene,esp6500siv2_all,1000g2015aug_all,avsnp142,clinvar_20190305,dbnsfp30a,cosmic70,dbnsfp31a_interpro,exac03,nci60 -operation g,f,f,f,f,f,f,f,f,f -nastring . --otherinfo --thread 4 1>05.annotation/05.02.annovar.err 2>05.annotation/05.02.annovar.log
+
+#########################################################################################################################################################
+
