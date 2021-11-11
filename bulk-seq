@@ -26,8 +26,8 @@ chr1    unknown exon    11874   12227   .       +       .       gene_id "DDX11L1
 step02 mapping job
 
 STAR    --genomeDir ./00_reference_genome/hg38_star_index   \
-        --runThreadN 2  \
-        --readFilesIn ./01_fastq/H3122LR_CDA_KD1_1.fastq.gz ./01_fastq/H3122LR_CDA_KD1_2.fastq.gz \
+        --runThreadN 2  \  #Number of CPU
+        --readFilesIn ./01_fastq/H3122LR_CDA_KD1_1.fastq.gz ./01_fastq/H3122LR_CDA_KD1_2.fastq.gz \ #input file
         --readFilesCommand zcat  \
         --sjdbGTFfile ./00_reference_genome/genes.gtf   \
         --outSAMtype BAM SortedByCoordinate   \
@@ -42,4 +42,66 @@ FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFFFFF::F,FFFFFFF
 CTCCTGGATGCACAAAAGACCCTGAAGGGCTTTTTTGATCAGCAAAACAAAAACAGAAAAGCAAAAAACAGTTAATTTTTGTTTGGTCAAGTTTACTCAAC
 
 #######################################################################################################
+
+step03 
+RPKM : 유전자 길이 , 총 리드수 두개 모두 나눔
+CPM : 유전자 길이로 나누지 않음 총 리드수로만 나눔
+run code : R <step03_edgeR_DEG.R --no-save
+
+library("edgeR")
+setwd("./03_edgeR/")
+files <- list.files("./")
+cfiles <- files[grep(glob2rx("*ReadsPerGene.out.tab"), files)]
+cfiles
+
+#non strand option. if strand specific, columns = c(1,4)
+counts = readDGE(cfiles,columns=c(1,4))
+colnames(counts) <- gsub("ReadsPerGene.out",'',colnames(counts))
+
+noint = rownames(counts) %in%
+c("N_unmapped","N_multimapping","N_noFeature","N_ambiguous")
+#CRITICAL STEP In edgeR, it is recommended to remove features without at least 1 read per million in n
+of the
+#samples, where n is the size of the smallest group of replicates (here, n = 3 for the knockdown group)
+.
+cpms = cpm(counts)
+keep = rowSums(cpms > 1) >= 1 & !noint
+counts = counts[keep,]
+
+Tissue <- factor(c("LR","LR","LR","CDA","CDA","CDA"))
+design <- model.matrix(~0+Tissue)
+y <- DGEList(counts = counts, group = Tissue)
+y <- calcNormFactors(y)
+normalized_cpm = cpm(y)
+normalized_cpm_log2 = log2(cpm(y)+1)
+
+write.table(file='./cpm_normalized_result.txt',normalized_cpm,sep='\t',col.names=NA,quote=FALSE)
+write.table(file='./cpm_normalized_log2_result.txt',normalized_cpm_log2,sep='\t',col.names=NA,quote=FAL
+SE)
+
+pdf("./MDSplot.pdf")
+plotMDS(y)
+dev.off()
+
+y <- estimateDisp(y, design, robust=TRUE)
+fit <- glmFit(y, design)
+lrt <- glmLRT(fit, contrast=c(-1,+1))
+topTags(lrt)
+o <- order(lrt$table$PValue)
+cpm(y)[o[1:10],]
+
+out <- topTags(lrt, n=Inf, adjust.method="BH")
+write.table(file='./edgeR_CDA_vs_LR_Total.txt',out,sep='\t',col.names=NA,quote=FALSE)
+keep2 <- out$table$FDR <= 0.05 & abs(out$table$logFC) >= 1
+write.table(file='./edgeR_CDA_vs_LR_DEG.txt',out[keep2,],sep='\t',col.names=NA,quote=FALSE)
+
+write.table(file = './edgeR_DEG_expression.txt',normalized_cpm_log2[rownames(out[keep2,]),],sep='\t',co
+l.names=NA,quote=FALSE)
+
+
+
+
+
+
+
 
